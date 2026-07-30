@@ -1,4 +1,9 @@
 package com.example.invertedindex.model;
 
-public record Document() {
+import java.util.List;
+
+public record Document(
+        List<String> tokens,
+        String doc
+) {
 }
