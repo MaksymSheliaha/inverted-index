@@ -1,6 +1,7 @@
 package com.example.invertedindex.controller;
 
-import com.example.invertedindex.model.SearchRequest;
+import com.example.invertedindex.model.request.IndexRequest;
+import com.example.invertedindex.model.request.SearchRequest;
 import com.example.invertedindex.service.IndexService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,8 +21,8 @@ public class SearchController {
     }
 
     @PostMapping("/index")
-    public ResponseEntity indexData(){
-        return ResponseEntity.ok(indexService.indexDataset(1));
+    public ResponseEntity indexData(@RequestBody IndexRequest indexRequest){
+        return ResponseEntity.ok(indexService.indexDataset(indexRequest.getThreadNum()));
     }
 
     @PostMapping("/search")

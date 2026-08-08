@@ -1,4 +1,4 @@
-package com.example.invertedindex.model;
+package com.example.invertedindex.model.request;
 
 import lombok.Data;
 
