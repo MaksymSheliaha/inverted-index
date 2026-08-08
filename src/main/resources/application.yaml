@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: inverted-index
+
+source:
+  input-folder: input

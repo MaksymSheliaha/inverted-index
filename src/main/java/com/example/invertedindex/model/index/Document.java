@@ -4,9 +4,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.nio.file.Path;
+
 @Getter
 @AllArgsConstructor
 @Setter
 public class Document{
     String doc;
+    Path path;
 }
