@@ -3,4 +3,4 @@ spring:
     name: inverted-index
 
 source:
-  input-folder: input
+  input-path: batched_dataset

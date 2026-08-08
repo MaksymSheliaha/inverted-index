@@ -3,11 +3,18 @@ package com.example.invertedindex.service;
 import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,34 +23,42 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IndexService {
 
     private final DataProvider dataProvider;
     private final ObjectMapper objectMapper;
-    private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     private Collection<Map<String, List<Posting>>> invertedIndex;
 
-    public boolean indexDataset(Integer threadNum){
+    public boolean indexDataset(Integer threadNum) {
         try {
 //            AtomicInteger counter = new AtomicInteger(0);
 //            invertedIndex = IntStream.range(0, threadNum).parallel().mapToObj(this::indexSegment).toList();
-            Map<Thread, Map<String, List<Posting>>> threadSafeInvertedIndex = new ConcurrentHashMap<>();
-            dataProvider.getInputFiles().forEach(file -> {
-                try {
-                    executor.submit(() -> {
-                        var index = threadSafeInvertedIndex.computeIfAbsent(Thread.currentThread(), k -> new HashMap<>());
-                        indexDoc(index, file);
-                    });
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to index file: " + file, e);
-                }
-            });
+            try(ExecutorService executor = Executors.newFixedThreadPool(threadNum)) {
+                Map<Thread, Map<String, List<Posting>>> threadSafeInvertedIndex = new ConcurrentHashMap<>();
+                dataProvider.getInputFiles().forEach(file -> {
+                    try (InputStream inputStream = Files.newInputStream(file)) {
 
-            invertedIndex = threadSafeInvertedIndex.values().stream().toList();
+                        var iterator = objectMapper.readerFor(Map.class).readValues(inputStream);
+
+                        while (iterator.hasNextValue()) {
+                            Document doc = new Document((Map<String, Object>) iterator.nextValue(), file);
+                            executor.execute(() -> {
+                                var index = threadSafeInvertedIndex.computeIfAbsent(Thread.currentThread(), k -> new HashMap<>());
+                                indexDoc(index, doc);
+                            });
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to index file: " + file, e);
+                    }
+                });
+                invertedIndex = threadSafeInvertedIndex.values().stream().toList();
+            }
         } catch (Exception e) {
+            log.error("Failed to index dataset", e);
             return false;
         }
         return true;
@@ -62,10 +77,9 @@ public class IndexService {
 //    }
 
     @SneakyThrows
-    private void indexDoc(Map<String, List<Posting>> index, Path file) {
-        Document doc = new Document(file.getFileName().toString(), file);
-        var document = objectMapper.readTree(file.toFile());
-        Map<String, Long> tokens = AnalyzeUtils.analyze(document.get("text").asText())
+    private void indexDoc(Map<String, List<Posting>> index, Document doc) {
+        String text = doc.getSource().get("description").toString();
+        Map<String, Long> tokens = AnalyzeUtils.analyze(text)
                 .stream()
                 .collect(Collectors.groupingBy(e -> e, Collectors.counting()));
 
@@ -75,7 +89,7 @@ public class IndexService {
     }
 
 
-    public List<Document> findDocs(String searchPhrase){
+    public List<Document> findDocs(String searchPhrase) {
         var searchTerms = AnalyzeUtils.analyze(searchPhrase);
         return searchTerms.stream().flatMap(this::findForTerm)
                 // todo: handle intersection of postings for multiple search terms
@@ -88,7 +102,7 @@ public class IndexService {
 
     }
 
-    private Stream<Posting> findForTerm(String searchTerm){
+    private Stream<Posting> findForTerm(String searchTerm) {
         return invertedIndex.parallelStream().map(termDic -> termDic.get(searchTerm))
                 .filter(Objects::nonNull)
                 .flatMap(Collection::stream);

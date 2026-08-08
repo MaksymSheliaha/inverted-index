@@ -5,11 +5,12 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.nio.file.Path;
+import java.util.Map;
 
 @Getter
 @AllArgsConstructor
 @Setter
 public class Document{
-    String doc;
+    Map<String, Object> source;
     Path path;
 }
