@@ -3,19 +3,16 @@ package com.example.invertedindex.service;
 import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.MappingIterator;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedInputStream;
-import java.io.FileInputStream;
+
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -90,6 +87,7 @@ public class IndexService {
 
 
     public List<Document> findDocs(String searchPhrase) {
+        // todo: limit return results to top N documents
         var searchTerms = AnalyzeUtils.analyze(searchPhrase);
         return searchTerms.stream().flatMap(this::findForTerm)
                 // todo: handle intersection of postings for multiple search terms
