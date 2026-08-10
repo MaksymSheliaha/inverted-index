@@ -4,6 +4,7 @@ import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
 
+import com.example.invertedindex.tools.MultivaluedConcurrentHashMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -29,13 +29,14 @@ public class IndexService {
     private final ObjectMapper objectMapper;
 
     private Collection<Map<String, List<Posting>>> invertedIndex;
+    private MultivaluedConcurrentHashMap<String, Posting> invertedIndexSafe;
 
     public boolean indexDataset(Integer threadNum) {
         try {
 //            AtomicInteger counter = new AtomicInteger(0);
 //            invertedIndex = IntStream.range(0, threadNum).parallel().mapToObj(this::indexSegment).toList();
             try(ExecutorService executor = Executors.newFixedThreadPool(threadNum)) {
-                Map<Thread, Map<String, List<Posting>>> threadSafeInvertedIndex = new ConcurrentHashMap<>();
+                MultivaluedConcurrentHashMap<String, Posting> threadSafeInvertedIndex = new MultivaluedConcurrentHashMap<>();
                 dataProvider.getInputFiles().forEach(file -> {
                     try (InputStream inputStream = Files.newInputStream(file)) {
 
@@ -43,16 +44,13 @@ public class IndexService {
 
                         while (iterator.hasNextValue()) {
                             Document doc = new Document((Map<String, Object>) iterator.nextValue(), file);
-                            executor.execute(() -> {
-                                var index = threadSafeInvertedIndex.computeIfAbsent(Thread.currentThread(), k -> new HashMap<>());
-                                indexDoc(index, doc);
-                            });
+                            executor.execute(() -> indexDoc(threadSafeInvertedIndex, doc));
                         }
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to index file: " + file, e);
                     }
                 });
-                invertedIndex = threadSafeInvertedIndex.values().stream().toList();
+                invertedIndexSafe = threadSafeInvertedIndex;
             }
         } catch (Exception e) {
             log.error("Failed to index dataset", e);
@@ -85,6 +83,18 @@ public class IndexService {
         });
     }
 
+    @SneakyThrows
+    private void indexDoc(MultivaluedConcurrentHashMap<String, Posting> index, Document doc) {
+        String text = doc.getSource().get("description").toString();
+        Map<String, Long> tokens = AnalyzeUtils.analyze(text)
+                .stream()
+                .collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+
+        tokens.forEach((token, freq) -> {
+            index.add(token, new Posting(doc, freq));
+        });
+    }
+
 
     public List<Document> findDocs(String searchPhrase) {
         // todo: limit return results to top N documents
@@ -101,8 +111,8 @@ public class IndexService {
     }
 
     private Stream<Posting> findForTerm(String searchTerm) {
-        return invertedIndex.parallelStream().map(termDic -> termDic.get(searchTerm))
-                .filter(Objects::nonNull)
-                .flatMap(Collection::stream);
+        return invertedIndexSafe.get(searchTerm)
+                .stream()
+                .filter(Objects::nonNull);
     }
 }
