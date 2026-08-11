@@ -4,7 +4,9 @@ import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
 
+import com.example.invertedindex.tools.executor.Executor;
 import com.example.invertedindex.tools.map.MultivaluedConcurrentHashMap;
+import com.example.invertedindex.tools.map.UnmodifiableMultivaluedMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -15,8 +17,6 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,13 +29,14 @@ public class IndexService {
     private final ObjectMapper objectMapper;
 
     private Collection<Map<String, List<Posting>>> invertedIndex;
-    private MultivaluedConcurrentHashMap<String, Posting> invertedIndexSafe;
+    private UnmodifiableMultivaluedMap<String, Posting> invertedIndexSafe;
 
     public boolean indexDataset(Integer threadNum) {
         try {
 //            AtomicInteger counter = new AtomicInteger(0);
 //            invertedIndex = IntStream.range(0, threadNum).parallel().mapToObj(this::indexSegment).toList();
-            try(ExecutorService executor = Executors.newFixedThreadPool(threadNum)) {
+            try(Executor executor = new Executor(threadNum)) {
+                executor.start();
                 MultivaluedConcurrentHashMap<String, Posting> threadSafeInvertedIndex = new MultivaluedConcurrentHashMap<>();
                 dataProvider.getInputFiles().forEach(file -> {
                     try (InputStream inputStream = Files.newInputStream(file)) {
@@ -44,13 +45,13 @@ public class IndexService {
 
                         while (iterator.hasNextValue()) {
                             Document doc = new Document((Map<String, Object>) iterator.nextValue(), file);
-                            executor.execute(() -> indexDoc(threadSafeInvertedIndex, doc));
+                            executor.submit(() -> indexDoc(threadSafeInvertedIndex, doc));
                         }
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to index file: " + file, e);
                     }
                 });
-                invertedIndexSafe = threadSafeInvertedIndex;
+                invertedIndexSafe = threadSafeInvertedIndex.getUnmodifiableMap();
             }
         } catch (Exception e) {
             log.error("Failed to index dataset", e);

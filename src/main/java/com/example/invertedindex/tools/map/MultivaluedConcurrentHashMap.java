@@ -138,4 +138,8 @@ public class MultivaluedConcurrentHashMap<K, V> {
             }
         }
     }
+
+    public UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap(){
+        return new UnmodifiableMultivaluedMap<>(table);
+    }
 }
