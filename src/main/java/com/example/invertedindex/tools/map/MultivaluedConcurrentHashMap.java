@@ -1,4 +1,4 @@
-package com.example.invertedindex.tools;
+package com.example.invertedindex.tools.map;
 
 import java.util.ArrayList;
 import java.util.Collections;

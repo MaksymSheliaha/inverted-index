@@ -4,7 +4,7 @@ import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
 
-import com.example.invertedindex.tools.MultivaluedConcurrentHashMap;
+import com.example.invertedindex.tools.map.MultivaluedConcurrentHashMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
