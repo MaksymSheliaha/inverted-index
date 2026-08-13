@@ -16,7 +16,8 @@ import java.util.List;
 @Slf4j
 @UtilityClass
 public class AnalyzeUtils {
-    private final Analyzer ENGLISH_ANALYZER = new EnglishAnalyzer();
+    private static final Analyzer ENGLISH_ANALYZER = new EnglishAnalyzer();
+    private static final int TOKEN_LENGTH_THRESHOLD = 2;
 
     public List<String> analyze(@NonNull String text) {
         // Implementation for text analysis
@@ -31,7 +32,10 @@ public class AnalyzeUtils {
             CharTermAttribute charTermAttribute = tokenStream.addAttribute(CharTermAttribute.class);
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
-                result.add(charTermAttribute.toString());
+                String term = charTermAttribute.toString();
+                if(term.length() > TOKEN_LENGTH_THRESHOLD) {
+                    result.add(charTermAttribute.toString());
+                }
             }
 
             tokenStream.end();
