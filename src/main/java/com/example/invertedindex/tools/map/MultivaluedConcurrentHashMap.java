@@ -1,7 +1,6 @@
 package com.example.invertedindex.tools.map;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -9,7 +8,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 
-public class MultivaluedConcurrentHashMap<K, V> {
+public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> {
     public static final int DEFAULT_CAPACITY = 64;
     public static final int DEFAULT_SEGMENT_COUNT = 16;
     public static final double DEFAULT_LOAD_FACTOR = 0.75;
@@ -34,21 +33,23 @@ public class MultivaluedConcurrentHashMap<K, V> {
     }
 
     /**
-     * Returns unsafe read-only list of values
+     * Returns list of values
      **/
+    @Override
     public List<V> get(K key) {
         int hash = key == null ? 0 : key.hashCode();
         int index = Math.abs(hash) % table.length;
         var node = table[index];
         while (node != null) {
             if (Objects.equals(key, node.key)) {
-                return Collections.unmodifiableList(node.value);
+                return List.copyOf(node.value);
             }
             node = node.next;
         }
         return null;
     }
 
+    @Override
     public void add(K key, V value) {
         int hash = key == null ? 0 : key.hashCode();
         int lockIndex = Math.abs(hash) % locks.length;
@@ -85,6 +86,7 @@ public class MultivaluedConcurrentHashMap<K, V> {
         table[index] = new Node<>(key, value, table[index]);
     }
 
+    @Override
     public boolean remove(K key) {
         int hash = key == null ? 0 : key.hashCode();
         int lockIndex = Math.abs(hash) % locks.length;
