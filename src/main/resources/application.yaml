@@ -1,6 +1,18 @@
 spring:
-  application:
-    name: inverted-index
+  application.name: inverted-index
+  ai:
+    ollama:
+      init:
+        pull-model-strategy: never
+      base-url: ${OLLAMA_URL:http://localhost:11434}
+      chat:
+        model: ${OLLAMA_MODEL:llama3.2:1b}
+        temperature: 0.0
+        num-predict: 20
+
+
+ollama:
+  defaultPrompt: ollama/prompt.txt
 
 source:
   input-path: batched_dataset

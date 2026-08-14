@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:0.32.11
+    container_name: ollama
+    ports: ["11434:11434"]
+    volumes:
+      - ./model_files:/model_files
+      - ollama_data:/root/.ollama
+    pull_policy: always
+    tty: true
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/model_files/run_ollama.sh"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: ${OLLAMA_GPU_DRIVER-nvidia}
+            count: ${OLLAMA_GPU_COUNT-1}
+            capabilities:
+              - gpu
+        limits:
+          memory: 4G    # Жорстке обмеження оперативної пам'яті
+
+  ollama-webui:
+    image: ghcr.io/ollama-webui/ollama-webui:main
+    container_name: ollama-webui
+    ports: ["3000:8080"]
+    volumes:
+      - ollama-webui:/app/backend/data
+    deploy:
+      resources:
+        limits:
+          memory: 500m
+    depends_on:
+      - ollama
+    environment:
+      - 'OLLAMA_API_BASE_URL=http://ollama:11434/api'
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  ollama-webui:

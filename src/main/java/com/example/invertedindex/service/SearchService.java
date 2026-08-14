@@ -1,6 +1,5 @@
 package com.example.invertedindex.service;
 
-import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
 import com.example.invertedindex.model.request.SearchRequest;
@@ -10,13 +9,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -26,6 +25,7 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class SearchService {
     private final ObjectMapper objectMapper;
+    private final OllamaService ollamaService;
     private final AtomicReference<MultivaluedMap<String, Posting>> invertedIndex = new AtomicReference<>();
 
     public void setInvertedIndex(MultivaluedMap<String, Posting> invertedIndex) {
@@ -35,7 +35,7 @@ public class SearchService {
     public SearchResponse findDocs(SearchRequest searchRequest) {
         if(invertedIndex.get() == null) return SearchResponse.EMPTY;
         // todo: limit return results to top N documents
-        var searchTerms = AnalyzeUtils.analyze(searchRequest.getSearchTerm());
+        var searchTerms = ollamaService.expandQuery(searchRequest.getSearchTerm());
         var docs = searchTerms.stream().flatMap(this::findForTerm)
                 // todo: handle intersection of postings for multiple search terms
                 // todo: marge posting with same document
@@ -58,9 +58,8 @@ public class SearchService {
     }
 
     private Stream<Posting> findForTerm(String searchTerm) {
-        return invertedIndex.get().get(searchTerm)
-                .stream()
-                .filter(Objects::nonNull);
+        var docs =  invertedIndex.get().get(searchTerm);
+        return CollectionUtils.isEmpty(docs) ? Stream.empty() : docs.stream();
     }
 
     private Map<Document, Map<String, Object>> readDocs(List<Document> docs) {
