@@ -9,15 +9,23 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
     protected UnmodifiableMultivaluedMap(Node<K, List<V>>[] table) {
         this.table = new Node[table.length];
 
-        for(int i = 0; i < table.length; i++) {
-            var node = table[i];
-            if(node == null) continue;
-            var copy = new Node<>(node.key, List.copyOf(node.value), null);
-            this.table[i] = copy;
-            node = node.next;
-            while(node != null) {
-                copy.next = new Node<>(node.key, List.copyOf(node.value), null);
-                node = node.next;
+        for (int i = 0; i < table.length; i++) {
+            Node<K, List<V>> node = table[i];
+            Node<K, List<V>> previous = null;
+            while (node != null) {
+                Node<K, List<V>> copy = new Node<>(
+                        node.key,
+                        List.copyOf(node.value),
+                        null
+                );
+
+                if (previous == null) {
+                    this.table[i] = copy;
+                } else {
+                    previous.next = copy;
+                }
+
+                previous = copy;
                 node = node.next;
             }
         }
@@ -26,7 +34,8 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
     @Override
     public List<V> get(K key) {
         int hash = key == null ? 0 : key.hashCode();
-        int index = Math.abs(hash) % table.length;
+        int index = Math.floorMod(hash, table.length);
+
         var node = table[index];
         while (node != null) {
             if (Objects.equals(key, node.key)) {
