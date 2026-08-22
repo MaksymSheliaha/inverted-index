@@ -19,17 +19,30 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
     private final double loadFactor;
 
     public MultivaluedConcurrentHashMap() {
-        this(DEFAULT_CAPACITY, DEFAULT_LOAD_FACTOR, DEFAULT_SEGMENT_COUNT);
+        this(DEFAULT_CAPACITY, DEFAULT_LOAD_FACTOR);
     }
 
-    public MultivaluedConcurrentHashMap(int capacity, double loadFactor, int segmentCount) {
+    public MultivaluedConcurrentHashMap(int capacity, double loadFactor) {
         this.table = new Node[capacity];
         this.size = new AtomicInteger(0);
         this.loadFactor = loadFactor;
+        int segmentCount = calculateSegmentCount(capacity);
         this.locks = new ReentrantLock[segmentCount];
         for (int i = 0; i < segmentCount; i++) {
             this.locks[i] = new ReentrantLock();
         }
+    }
+
+    private static int calculateSegmentCount(int capacity) {
+        int target = Math.min(DEFAULT_SEGMENT_COUNT, capacity);
+
+        for (int segments = target; segments >= 1; segments--) {
+            if (capacity % segments == 0) {
+                return segments;
+            }
+        }
+
+        return 1;
     }
 
     /**
@@ -37,27 +50,35 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
      **/
     @Override
     public List<V> get(K key) {
-        int hash = key == null ? 0 : key.hashCode();
-        int index = Math.abs(hash) % table.length;
-        var node = table[index];
-        while (node != null) {
-            if (Objects.equals(key, node.key)) {
-                return List.copyOf(node.value);
+        int hash = hash(key);
+        int lockIndex = lockIndex(hash);
+
+        locks[lockIndex].lock();
+        try {
+            int index = tableIndex(hash);
+            var node = table[index];
+            while (node != null) {
+                if (Objects.equals(key, node.key)) {
+                    return List.copyOf(node.value);
+                }
+                node = node.next;
             }
-            node = node.next;
+
+        } finally {
+            locks[lockIndex].unlock();
         }
         return null;
     }
 
     @Override
     public void add(K key, V value) {
-        int hash = key == null ? 0 : key.hashCode();
-        int lockIndex = Math.abs(hash) % locks.length;
+        int hash = hash(key);
+        int lockIndex = lockIndex(hash);
 
         locks[lockIndex].lock();
         try {
-            int index = Math.abs(hash) % table.length;
-            var node = table[index];
+            int index = tableIndex(hash);
+            Node<K, List<V>> node = table[index];
 
             while (node != null) {
                 if (Objects.equals(key, node.key)) {
@@ -69,7 +90,6 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
             List<V> list = new ArrayList<>();
             list.add(value);
             table[index] = new Node<>(key, list, table[index]);
-
         } finally {
             locks[lockIndex].unlock();
         }
@@ -81,19 +101,19 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
     }
 
     private void put(K key, List<V> value, Node<K, List<V>>[] table) {
-        int hash = key == null ? 0 : key.hashCode();
-        int index = Math.abs(hash) % table.length;
+        int hash = hash(key);
+        int index = Math.floorMod(hash, table.length);
         table[index] = new Node<>(key, value, table[index]);
     }
 
     @Override
     public boolean remove(K key) {
-        int hash = key == null ? 0 : key.hashCode();
-        int lockIndex = Math.abs(hash) % locks.length;
+        int hash = hash(key);
+        int lockIndex = lockIndex(hash);
 
         locks[lockIndex].lock();
         try {
-            int index = Math.abs(hash) % table.length;
+            int index = tableIndex(hash);
             var node = table[index];
             Node<K, List<V>> prev = null;
             while (node != null) {
@@ -141,7 +161,28 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
         }
     }
 
+    private int hash(Object key) {
+        return key == null ? 0 : key.hashCode();
+    }
+
+    private int lockIndex(int hash) {
+        return Math.floorMod(hash, locks.length);
+    }
+
+    private int tableIndex(int hash) {
+        return Math.floorMod(hash, table.length);
+    }
+
     public UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap(){
-        return new UnmodifiableMultivaluedMap<>(table);
+        for(var lock: locks) {
+            lock.lock();
+        }
+        try{
+            return new UnmodifiableMultivaluedMap<>(table);
+        } finally {
+            for(var lock: locks) {
+                lock.unlock();
+            }
+        }
     }
 }

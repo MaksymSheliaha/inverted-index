@@ -18,6 +18,7 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
             while(node != null) {
                 copy.next = new Node<>(node.key, List.copyOf(node.value), null);
                 node = node.next;
+                node = node.next;
             }
         }
     }
