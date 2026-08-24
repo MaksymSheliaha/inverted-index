@@ -1,5 +1,6 @@
 package com.example.invertedindex.service;
 
+import com.example.invertedindex.constants.SearchableFields;
 import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
@@ -18,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -63,7 +63,7 @@ public class IndexService {
                 var location = iterator.getCurrentLocation().getByteOffset() - 1;
                 var content = (Map<String, Object>) iterator.nextValue();
                 Document doc = new Document(location, file);
-                indexDoc(threadSafeInvertedIndex, doc, content.get("description").toString());
+                indexDoc(threadSafeInvertedIndex, doc, content);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to index file: " + file, e);
@@ -71,12 +71,17 @@ public class IndexService {
     }
 
     @SneakyThrows
-    private void indexDoc(MultivaluedConcurrentHashMap<String, Posting> index, Document doc, String content) {
-        Map<String, Long> tokens = AnalyzeUtils.analyze(content)
-                .stream()
-                .collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+    private void indexDoc(MultivaluedConcurrentHashMap<String, Posting> index, Document doc, Map<String, Object> content) {
+        Map<String, Set<SearchableFields>> tokens = new HashMap<>();
+        for (SearchableFields field : SearchableFields.values()) {
+            Object fieldValue = content.get(field.getFieldName());
+            if (fieldValue != null) {
+                List<String> fieldTokens = AnalyzeUtils.analyzeField(fieldValue, field.getType(), false);
+                fieldTokens.forEach(token -> tokens.computeIfAbsent(token, k -> new HashSet<>()).add(field));
+            }
+        }
 
-        tokens.forEach((token, freq) ->
-            index.add(token, new Posting(doc, freq)));
+        tokens.forEach((token, fields) ->
+            index.add(token, new Posting(doc, fields.toArray(new SearchableFields[0]))));
     }
 }

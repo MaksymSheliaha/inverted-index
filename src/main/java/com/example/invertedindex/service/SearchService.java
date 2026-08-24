@@ -1,21 +1,22 @@
 package com.example.invertedindex.service;
 
+import com.example.invertedindex.constants.SearchableFields;
+import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Posting;
 import com.example.invertedindex.model.request.SearchRequest;
+import com.example.invertedindex.model.response.ResponseDoc;
 import com.example.invertedindex.model.response.SearchResponse;
 import com.example.invertedindex.tools.map.MultivaluedMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
+import org.springframework.util.StopWatch;
 
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -24,6 +25,8 @@ import java.util.stream.Stream;
 @Service
 @RequiredArgsConstructor
 public class SearchService {
+    private static final int MIN_NUM_FOUND_THRESHOLD = 10;
+
     private final ObjectMapper objectMapper;
     private final OllamaService ollamaService;
     private final AtomicReference<MultivaluedMap<String, Posting>> invertedIndex = new AtomicReference<>();
@@ -34,37 +37,121 @@ public class SearchService {
 
     public SearchResponse findDocs(SearchRequest searchRequest) {
         if(invertedIndex.get() == null) return SearchResponse.EMPTY;
-        // todo: limit return results to top N documents
-        var searchTerms = ollamaService.expandQuery(searchRequest.getSearchTerm());
-        var docs = searchTerms.stream().flatMap(this::findForTerm)
-                // todo: handle intersection of postings for multiple search terms
-                // todo: marge posting with same document
-                .collect(Collectors.groupingBy(Posting::document, Collectors.counting()))
-                .entrySet().stream()
-                .sorted(Map.Entry.<Document, Long>comparingByValue().reversed())
-                .map(Map.Entry::getKey)
-                .skip((long) searchRequest.getPage() * searchRequest.getSize())
+        Map timingContext = new HashMap<>();
+        Map debugContext = new HashMap<>();
+        debugContext.put("timingContext", timingContext);
+
+        StopWatch analizeStopWatch = new StopWatch();
+        analizeStopWatch.start("analyze");
+        var searchTerms = AnalyzeUtils.analyze(searchRequest.getSearchTerm(), false);
+        analizeStopWatch.stop();
+
+        StopWatch firstStageStopWatch = new StopWatch();
+        firstStageStopWatch.start("firstStage");
+        var docs = findForTerms(searchTerms);
+        firstStageStopWatch.stop();
+
+        var expandedDocs = expandResults(docs, searchRequest, debugContext);
+        int numFound = docs.size() + expandedDocs.size();
+
+        StopWatch collectStopWatch = new StopWatch();
+        collectStopWatch.start("collect");
+        var matches = mergeMatches(docs, expandedDocs, numFound, searchRequest);
+
+        var resultMap = readDocs(matches);
+
+        var result = matches.stream()
+                .map(match -> new ResponseDoc(
+                            resultMap.get(match.document()), match.score(),
+                            expandedDocs.containsKey(match.document())
+                        )
+                )
+                .toList();
+
+        collectStopWatch.stop();
+
+        timingContext.put("analyze", analizeStopWatch.getTotalTimeMillis());
+        timingContext.put("first stage", firstStageStopWatch.getTotalTimeMillis());
+        timingContext.put("collect", collectStopWatch.getTotalTimeMillis());
+
+        return SearchResponse.builder()
+                .numFound(numFound)
+                .page(searchRequest.getPage())
+                .size(searchRequest.getSize())
+                .docs(result)
+                .searchTerms(searchTerms)
+                .extendSearchTerms((List<String>)debugContext.get("expandedSearchTerms"))
+                .timings(searchRequest.isDebug() ? timingContext : Map.of())
+                .build();
+    }
+
+    private Map<Document, Double> expandResults(Map<Document, Double> docs, SearchRequest searchRequest, Map debugContext) {
+        if (shouldExpandQuery(docs, searchRequest)) {
+            Map timingContext = (Map) debugContext.get("timingContext");
+            StopWatch expandStopWatch = new StopWatch();
+            expandStopWatch.start("expand");
+            var expandedTerms = ollamaService.expandQuery(searchRequest.getSearchTerm());
+            expandStopWatch.stop();
+
+            log.info("Expanded query terms: {}", expandedTerms);
+            debugContext.put("expandedSearchTerms", expandedTerms);
+
+            StopWatch expandedStageStopWatch = new StopWatch();
+            expandedStageStopWatch.start("expandStage");
+            var result = findForTerms(expandedTerms);
+            expandedStageStopWatch.stop();
+
+            timingContext.put("expand", expandStopWatch.getTotalTimeMillis());
+            timingContext.put("expanded search", expandStopWatch.getTotalTimeMillis());
+
+            return result;
+        }
+
+        return Map.of();
+    }
+
+    private List<Match> mergeMatches(Map<Document, Double> docs, Map<Document, Double> expandedDocs,
+                                     int numFound, SearchRequest searchRequest) {
+        int expectedPage = searchRequest.getPage();
+        int maxPage = (int) Math.ceil((double) numFound / searchRequest.getSize());
+        if (expectedPage >= maxPage) {
+            log.warn("Expected page {} is greater than max page {}. Returning empty results.", expectedPage, maxPage);
+            return List.of();
+        }
+
+        long offset = (long) expectedPage * searchRequest.getSize();
+
+        var docStream = docs.entrySet().stream()
+                .map(entry -> new Match(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparingDouble(Match::score).reversed());
+
+        var extendedDocStream = expandedDocs.entrySet().stream()
+                .map(entry -> new Match(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparingDouble(Match::score).reversed());
+
+        return Stream.concat(docStream, extendedDocStream)
+                .skip(offset)
                 .limit(searchRequest.getSize())
                 .toList();
-
-        var resultMap = readDocs(docs);
-
-        var result =  docs.stream()
-                .map(resultMap::get)
-                .toList();
-
-        return new SearchResponse(result.size(), searchRequest.getPage(), searchRequest.getSize(), result);
-
     }
 
-    private Stream<Posting> findForTerm(String searchTerm) {
-        var docs =  invertedIndex.get().get(searchTerm);
-        return CollectionUtils.isEmpty(docs) ? Stream.empty() : docs.stream();
+    private Map<Document, Double> findForTerms(List<String> searchTerms) {
+        return searchTerms.stream().flatMap(this::findForTerm)
+                .collect(Collectors.groupingBy(Match::document, Collectors.summingDouble(Match::score)));
     }
 
-    private Map<Document, Map<String, Object>> readDocs(List<Document> docs) {
+    private Stream<Match> findForTerm(String searchTerm) {
+        return Optional.ofNullable(invertedIndex.get().get(searchTerm))
+                .stream()
+                .flatMap(Collection::stream)
+                .map(posting ->
+                        new Match(posting.document(), getScore(posting)));
+    }
+
+    private Map<Document, Map<String, Object>> readDocs(List<Match> matches) {
         Map<Document, Map<String, Object>> result = new HashMap<>();
-        Map<Path, List<Document>> grouped = docs.stream()
+        Map<Path, List<Document>> grouped = matches.stream()
+                .map(Match::document)
                 .collect(Collectors.groupingBy(Document::getPath));
 
         for(Map.Entry<Path, List<Document>> entry: grouped.entrySet()) {
@@ -83,4 +170,15 @@ public class SearchService {
 
         return result;
     }
+
+    private double getScore(Posting posting) {
+        return Arrays.stream(posting.fields()).mapToDouble(SearchableFields::getBoost).max().orElse(0.0);
+    }
+
+    private boolean shouldExpandQuery(Map matches, SearchRequest request) {
+        int threshold = Math.max(MIN_NUM_FOUND_THRESHOLD, request.getSize());
+        return matches.size() < threshold;
+    }
+
+    private record Match(Document document, double score) {}
 }

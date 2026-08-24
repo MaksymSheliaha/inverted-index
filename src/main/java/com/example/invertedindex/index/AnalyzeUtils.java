@@ -1,5 +1,6 @@
 package com.example.invertedindex.index;
 
+import com.example.invertedindex.constants.SearchableFieldType;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -47,5 +48,20 @@ public class AnalyzeUtils {
             log.info("Analyzed text \"{}\" in {} ms", text, stopWatch.getTotalTimeMillis());
         }
         return result;
+    }
+
+    public List<String> analyzeField(Object text, SearchableFieldType type, boolean debug) {
+        if(type == SearchableFieldType.TEXT) {
+            return analyze(String.valueOf(text), debug);
+        } else if(type == SearchableFieldType.LIST) {
+            List<String> items = (List<String>)text;
+            List<String> result = new ArrayList<>();
+            for(String item : items) {
+                result.addAll(analyze(item.trim(), debug));
+            }
+            return result;
+        } else {
+            throw new IllegalArgumentException("Unsupported field type: " + type);
+        }
     }
 }

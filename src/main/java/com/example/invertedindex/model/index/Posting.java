@@ -1,4 +1,6 @@
 package com.example.invertedindex.model.index;
 
-public record Posting(Document document, long frequency) {
+import com.example.invertedindex.constants.SearchableFields;
+
+public record Posting(Document document, SearchableFields[] fields) {
 }

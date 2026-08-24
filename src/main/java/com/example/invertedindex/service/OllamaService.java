@@ -44,5 +44,4 @@ public class OllamaService {
                     .collect(Collectors.toList());
         }
     }
-
 }

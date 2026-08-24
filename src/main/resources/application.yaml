@@ -8,7 +8,7 @@ spring:
       chat:
         model: ${OLLAMA_MODEL:llama3.2:1b}
         temperature: 0.0
-        num-predict: 20
+        num-predict: 1000
 
 
 ollama:
