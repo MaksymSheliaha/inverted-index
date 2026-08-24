@@ -16,6 +16,6 @@ public enum SearchableFields {
 
     private final String fieldName;
     private final SearchableFieldType type;
-    public final float boost;
+    private final double boost;
 }
 

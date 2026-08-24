@@ -3,6 +3,8 @@ package com.example.invertedindex.service;
 import com.example.invertedindex.constants.SearchableFields;
 import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
+import com.example.invertedindex.model.index.Field;
+import com.example.invertedindex.model.index.Index;
 import com.example.invertedindex.model.index.Posting;
 
 import com.example.invertedindex.tools.executor.Executor;
@@ -19,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -37,14 +40,14 @@ public class IndexService {
             return false;
         }
         try {
-            MultivaluedConcurrentHashMap<String, Posting> threadSafeInvertedIndex = new MultivaluedConcurrentHashMap<>();
+            var index = Index.initWriteIndex(getFields());
             try (Executor executor = new Executor(threadNum)) {
                 executor.start();
                 dataProvider.getInputFiles().forEach(file ->
-                    executor.submit(() -> processFile(file, threadSafeInvertedIndex)));
+                    executor.submit(() -> processFile(file, index)));
             }
 
-            searchService.setInvertedIndex(threadSafeInvertedIndex.getUnmodifiableMap());
+            searchService.setInvertedIndex(index.toReadIndex());
             log.info("Indexing finished");
         } catch (Exception e) {
             log.error("Failed to index dataset", e);
@@ -55,7 +58,7 @@ public class IndexService {
         return true;
     }
 
-    private void processFile(Path file, MultivaluedConcurrentHashMap<String, Posting> threadSafeInvertedIndex) {
+    private void processFile(Path file, Index index) {
         try (InputStream inputStream = Files.newInputStream(file)) {
             var iterator = objectMapper.readerFor(Map.class).readValues(inputStream);
 
@@ -63,7 +66,7 @@ public class IndexService {
                 var location = iterator.getCurrentLocation().getByteOffset() - 1;
                 var content = (Map<String, Object>) iterator.nextValue();
                 Document doc = new Document(location, file);
-                indexDoc(threadSafeInvertedIndex, doc, content);
+                indexDoc(index, doc, content);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to index file: " + file, e);
@@ -71,17 +74,29 @@ public class IndexService {
     }
 
     @SneakyThrows
-    private void indexDoc(MultivaluedConcurrentHashMap<String, Posting> index, Document doc, Map<String, Object> content) {
-        Map<String, Set<SearchableFields>> tokens = new HashMap<>();
-        for (SearchableFields field : SearchableFields.values()) {
-            Object fieldValue = content.get(field.getFieldName());
+    private void indexDoc(Index index, Document doc, Map<String, Object> content) {
+        for(var fieldIndex: index.fieldIndexes()) {
+            var field = fieldIndex.field();
+            var postings = fieldIndex.postings();
+            Object fieldValue = content.get(field.name());
             if (fieldValue != null) {
-                List<String> fieldTokens = AnalyzeUtils.analyzeField(fieldValue, field.getType(), false);
-                fieldTokens.forEach(token -> tokens.computeIfAbsent(token, k -> new HashSet<>()).add(field));
+                Map<String, Long> tokens = AnalyzeUtils.analyzeField(fieldValue, field.type(), false)
+                        .stream()
+                        .collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+                for (Map.Entry<String, Long> entry : tokens.entrySet()) {
+                    String token = entry.getKey();
+                    Long count = entry.getValue();
+                    postings.add(token, new Posting(doc, count));
+                }
             }
         }
+    }
 
-        tokens.forEach((token, fields) ->
-            index.add(token, new Posting(doc, fields.toArray(new SearchableFields[0]))));
+    private List<Field> getFields() {
+        List<Field> fields = new ArrayList<>();
+        for (SearchableFields field : SearchableFields.values()) {
+            fields.add(new Field(field.getFieldName(), field.getType(), field.getBoost()));
+        }
+        return fields;
     }
 }
