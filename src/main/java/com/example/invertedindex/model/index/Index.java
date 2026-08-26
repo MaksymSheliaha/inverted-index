@@ -1,13 +1,10 @@
 package com.example.invertedindex.model.index;
 
-import com.example.invertedindex.constants.SearchableFields;
 import com.example.invertedindex.tools.map.MultivaluedConcurrentHashMap;
 import com.example.invertedindex.tools.map.MultivaluedMap;
 
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
 public record Index(FieldIndex[] fieldIndexes) {
 
@@ -32,4 +29,3 @@ public record Index(FieldIndex[] fieldIndexes) {
             MultivaluedMap<String, Posting> postings
     ) {}
 }
-

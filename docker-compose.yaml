@@ -1,6 +1,23 @@
-version: '3.8'
-
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inverted-index-app
+    ports:
+      - "8080:8080"
+      - "9010:9010"
+    environment:
+      - SOURCE_INPUT_PATH=/app/index_files
+      - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
+      - JAVA_TOOL_OPTIONS=-Xmx8g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1
+    volumes:
+      - index-volume:/app/index_files
+      - ./index_files:/app/index_files
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:0.32.11
     container_name: ollama
@@ -21,7 +38,7 @@ services:
             capabilities:
               - gpu
         limits:
-          memory: 4G    # Жорстке обмеження оперативної пам'яті
+          memory: 2G
 
   ollama-webui:
     image: ghcr.io/ollama-webui/ollama-webui:main
@@ -42,3 +59,4 @@ services:
 volumes:
   ollama_data:
   ollama-webui:
+  index-volume:

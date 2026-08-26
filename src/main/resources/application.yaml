@@ -15,4 +15,4 @@ ollama:
   defaultPrompt: ollama/prompt.txt
 
 source:
-  input-path: batched_dataset
+  input-path: index_files
