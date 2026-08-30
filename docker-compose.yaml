@@ -10,9 +10,8 @@ services:
     environment:
       - SOURCE_INPUT_PATH=/app/index_files
       - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
-      - JAVA_TOOL_OPTIONS=-Xmx8g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1
+      - JAVA_TOOL_OPTIONS=-Xms1g -Xmx6g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1
     volumes:
-      - index-volume:/app/index_files
       - ./index_files:/app/index_files
     depends_on:
       - ollama
@@ -21,7 +20,8 @@ services:
   ollama:
     image: ollama/ollama:0.32.11
     container_name: ollama
-    ports: ["11434:11434"]
+    ports: 
+      - "11434:11434"
     volumes:
       - ./model_files:/model_files
       - ollama_data:/root/.ollama
@@ -33,30 +33,12 @@ services:
       resources:
         reservations:
           devices:
-          - driver: ${OLLAMA_GPU_DRIVER-nvidia}
-            count: ${OLLAMA_GPU_COUNT-1}
-            capabilities:
-              - gpu
+            - driver: ${OLLAMA_GPU_DRIVER:-nvidia}
+              count: ${OLLAMA_GPU_COUNT:-all}
+              capabilities:
+                - gpu
         limits:
           memory: 2G
 
-  ollama-webui:
-    image: ghcr.io/ollama-webui/ollama-webui:main
-    container_name: ollama-webui
-    ports: ["3000:8080"]
-    volumes:
-      - ollama-webui:/app/backend/data
-    deploy:
-      resources:
-        limits:
-          memory: 500m
-    depends_on:
-      - ollama
-    environment:
-      - 'OLLAMA_API_BASE_URL=http://ollama:11434/api'
-    restart: unless-stopped
-
 volumes:
   ollama_data:
-  ollama-webui:
-  index-volume:
