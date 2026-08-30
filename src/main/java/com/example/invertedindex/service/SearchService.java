@@ -1,17 +1,17 @@
 package com.example.invertedindex.service;
 
-import com.example.invertedindex.constants.SearchableFields;
 import com.example.invertedindex.index.AnalyzeUtils;
 import com.example.invertedindex.model.index.Document;
-import com.example.invertedindex.model.index.Posting;
+import com.example.invertedindex.model.index.Field;
+import com.example.invertedindex.model.index.Index;
 import com.example.invertedindex.model.request.SearchRequest;
 import com.example.invertedindex.model.response.ResponseDoc;
 import com.example.invertedindex.model.response.SearchResponse;
-import com.example.invertedindex.tools.map.MultivaluedMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StopWatch;
 
 import java.io.RandomAccessFile;
@@ -29,9 +29,9 @@ public class SearchService {
 
     private final ObjectMapper objectMapper;
     private final OllamaService ollamaService;
-    private final AtomicReference<MultivaluedMap<String, Posting>> invertedIndex = new AtomicReference<>();
+    private final AtomicReference<Index> invertedIndex = new AtomicReference<>();
 
-    public void setInvertedIndex(MultivaluedMap<String, Posting> invertedIndex) {
+    public void setInvertedIndex(Index invertedIndex) {
         this.invertedIndex.set(invertedIndex);
     }
 
@@ -141,11 +141,19 @@ public class SearchService {
     }
 
     private Stream<Match> findForTerm(String searchTerm) {
-        return Optional.ofNullable(invertedIndex.get().get(searchTerm))
+        return Arrays.stream(invertedIndex.get().fieldIndexes())
+                .flatMap(fieldIndex -> {
+                    var docs = fieldIndex.postings().get(searchTerm);
+                    if (CollectionUtils.isEmpty(docs)) {
+                        return Stream.empty();
+                    }
+                    return docs.stream()
+                            .map(posting -> new FieldMatch(posting.document(), fieldIndex.field()));
+                })
+                .collect(Collectors.groupingBy(FieldMatch::document, Collectors.mapping(FieldMatch::field, Collectors.toList())))
+                .entrySet()
                 .stream()
-                .flatMap(Collection::stream)
-                .map(posting ->
-                        new Match(posting.document(), getScore(posting)));
+                .map(entry -> new Match(entry.getKey(), getScore(entry.getValue())));
     }
 
     private Map<Document, Map<String, Object>> readDocs(List<Match> matches) {
@@ -171,8 +179,8 @@ public class SearchService {
         return result;
     }
 
-    private double getScore(Posting posting) {
-        return Arrays.stream(posting.fields()).mapToDouble(SearchableFields::getBoost).max().orElse(0.0);
+    private double getScore(List<Field> fields) {
+        return fields.stream().mapToDouble(Field::boost).max().orElse(0.0);
     }
 
     private boolean shouldExpandQuery(Map matches, SearchRequest request) {
@@ -181,4 +189,5 @@ public class SearchService {
     }
 
     private record Match(Document document, double score) {}
+    private record FieldMatch(Document document, Field field) {}
 }

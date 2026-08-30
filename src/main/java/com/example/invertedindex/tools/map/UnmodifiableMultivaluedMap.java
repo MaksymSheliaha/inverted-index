@@ -55,4 +55,9 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
     public boolean remove(K key) {
         throw new UnsupportedOperationException("UnmodifiableMultivaluedMap doesn't support remove method");
     }
+
+    @Override
+    public UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap() {
+        throw new UnsupportedOperationException("UnmodifiableMultivaluedMap doesn't support getUnmodifiableMap method");
+    }
 }
