@@ -38,7 +38,7 @@ services:
               capabilities:
                 - gpu
         limits:
-          memory: 2G
+          memory: 6G
 
 volumes:
   ollama_data:

@@ -5,7 +5,7 @@ ollama serve &
 
 sleep 5
 
-echo "Ollama is ready, pulling the lightweight model..."
-ollama pull llama3.2:1b
+echo "Ollama is ready, pulling the model..."
+ollama pull llama3.2:3b
 
 wait

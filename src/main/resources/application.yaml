@@ -3,12 +3,11 @@ spring:
   ai:
     ollama:
       init:
-        pull-model-strategy: never
+        pull-model-strategy: when_missing
       base-url: ${OLLAMA_URL:http://localhost:11434}
       chat:
-        model: ${OLLAMA_MODEL:llama3.2:1b}
+        model: ${OLLAMA_MODEL:llama3.2:3b}
         temperature: 0.0
-        num-predict: 1000
 
 
 ollama:

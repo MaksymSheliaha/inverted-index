@@ -16,12 +16,6 @@ public class SearchController {
     private final IndexService indexService;
     private final SearchService searchService;
 
-
-    @GetMapping("/health")
-    public ResponseEntity health(){
-        return ResponseEntity.ok().build();
-    }
-
     @PostMapping("/index")
     public ResponseEntity indexData(@RequestBody IndexRequest indexRequest){
         return ResponseEntity.ok(indexService.indexDataset(indexRequest.getThreadNum()));
@@ -30,10 +24,5 @@ public class SearchController {
     @PostMapping("/search")
     public ResponseEntity search(@RequestBody SearchRequest searchRequest){
         return ResponseEntity.ok(searchService.findDocs(searchRequest));
-    }
-
-    @GetMapping("/stats")
-    public ResponseEntity getStats(){
-        return ResponseEntity.ok().build();
     }
 }
