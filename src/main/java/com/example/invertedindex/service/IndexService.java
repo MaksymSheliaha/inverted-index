@@ -6,6 +6,7 @@ import com.example.invertedindex.model.index.Document;
 import com.example.invertedindex.model.index.Field;
 import com.example.invertedindex.model.index.Index;
 import com.example.invertedindex.model.index.Posting;
+import com.example.invertedindex.model.response.IndexResponse;
 
 import com.example.invertedindex.tools.executor.Executor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,10 +58,10 @@ public class IndexService {
         return threadsUsed.get();
     }
 
-    public boolean indexDataset(Integer threadNum) {
+    public IndexResponse indexDataset(Integer threadNum) {
         if (!indexLock.tryLock()) {
             log.warn("Another indexing is in progress");
-            return false;
+            return IndexResponse.error(isIndexed(), "Another indexing is in progress");
         }
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
@@ -79,13 +80,13 @@ public class IndexService {
             stopWatch.stop();
             indexBuildTimeMs.set(stopWatch.getTotalTimeMillis());
             indexed.set(true);
+            return IndexResponse.successful(getDocumentCount(), getIndexBuildTimeMs(), getThreadsUsed());
         } catch (Exception e) {
             log.error("Failed to index dataset", e);
-            return false;
+            return IndexResponse.error(isIndexed(), "Indexing failed");
         } finally {
             indexLock.unlock();
         }
-        return true;
     }
 
     private void processFile(Path file, Index index) {

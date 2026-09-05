@@ -2,6 +2,7 @@ package com.example.invertedindex.controller;
 
 import com.example.invertedindex.model.request.IndexRequest;
 import com.example.invertedindex.model.request.SearchRequest;
+import com.example.invertedindex.model.response.IndexResponse;
 import com.example.invertedindex.service.IndexService;
 import com.example.invertedindex.service.SearchService;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class SearchController {
     private final SearchService searchService;
 
     @PostMapping("/index")
-    public ResponseEntity indexData(@RequestBody IndexRequest indexRequest){
+    public ResponseEntity<IndexResponse> indexData(@RequestBody IndexRequest indexRequest){
         return ResponseEntity.ok(indexService.indexDataset(indexRequest.getThreadNum()));
     }
 
