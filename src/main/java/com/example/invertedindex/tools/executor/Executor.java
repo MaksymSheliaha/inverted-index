@@ -1,20 +1,19 @@
 package com.example.invertedindex.tools.executor;
 
+import com.example.invertedindex.tools.Queue;
 import com.example.invertedindex.tools.executor.custom.CustomFuture;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
-import java.util.ArrayDeque;
 import java.util.Arrays;
-import java.util.Queue;
 import java.util.concurrent.Callable;
 
+@Slf4j
 public class Executor implements Closeable {
 
     private static final int DEFAULT_THREAD_NUM = 6;
-    private static final int DEFAULT_QUEUE_SIZE = 20;
 
     private final Thread[] threads;
-    // todo: implement thread safe queue
     private final Queue<Runnable> queue;
 
     private final Object stoppedMonitor = new Object();
@@ -25,16 +24,12 @@ public class Executor implements Closeable {
 
 
     public Executor() {
-        this(DEFAULT_THREAD_NUM, DEFAULT_QUEUE_SIZE);
+        this(DEFAULT_THREAD_NUM);
     }
 
     public Executor(int threadNum) {
-        this(threadNum, DEFAULT_QUEUE_SIZE);
-    }
-
-    public Executor(int threadNum, int queueSize) {
         threads = new Thread[threadNum];
-        queue = new ArrayDeque<>(queueSize);
+        queue = new Queue<>();
         for (int i = 0; i < threadNum; i++) {
             threads[i] = new Worker();
         }
@@ -147,9 +142,13 @@ public class Executor implements Closeable {
                     task = queue.poll();
                 }
 
-                task.run();
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    log.error("Task threw an unhandled exception", t);
+                }
             }
-            System.out.printf("Thread %d closed\n", Thread.currentThread().threadId());
+            log.info("Thread {} closed", Thread.currentThread().threadId());
         }
     }
 }

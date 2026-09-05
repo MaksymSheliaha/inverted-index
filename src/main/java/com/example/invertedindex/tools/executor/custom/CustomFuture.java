@@ -26,6 +26,9 @@ public class CustomFuture<T> {
 
     public synchronized T tryGet(){
         if(isReady()){
+            if (status == Status.ERROR) {
+                throw new RuntimeException("Task execution failed");
+            }
             return payload;
         }
 
@@ -36,6 +39,9 @@ public class CustomFuture<T> {
         while (!isReady()){
             wait();
         }
+        if (status == Status.ERROR) {
+            throw new RuntimeException("Task execution failed");
+        }
         return payload;
     }
 
@@ -45,6 +51,8 @@ public class CustomFuture<T> {
 
     public synchronized void error(){
         this.status = Status.ERROR;
+        isReady.set(true);
+        notifyAll();
     }
 
     public Status getStatus(){
