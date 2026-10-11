@@ -15,19 +15,12 @@ import org.springframework.util.StringUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class OllamaService {
-    private static final long TIMEOUT_SECONDS = 10;
-    private static final long INIT_TIMEOUT_SECONDS = 120;
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
@@ -35,7 +28,7 @@ public class OllamaService {
     @PostConstruct
     public void init() {
         try {
-            executeWithTimeout(() -> chatClient.prompt().user("Check").call().content(), INIT_TIMEOUT_SECONDS);
+            chatClient.prompt().user("Check").call().content();
             log.info("Ollama is available");
         } catch (Exception e) {
             log.error("Ollama health check failed", e);
@@ -45,7 +38,7 @@ public class OllamaService {
 
     public boolean isAvailable() {
         try {
-            executeWithTimeout(() -> chatClient.prompt().user("Check").call().content(), TIMEOUT_SECONDS);
+            chatClient.prompt().user("Check").call().content();
             return true;
         } catch (Exception e) {
             log.error("Ollama health check failed", e);
@@ -61,11 +54,10 @@ public class OllamaService {
         try {
             log.info("Expanding query: '{}'", originalQuery);
 
-            String response = executeWithTimeout(() -> chatClient.prompt()
-                            .user(originalQuery)
-                            .call()
-                            .content(),
-                    TIMEOUT_SECONDS);
+            String response = chatClient.prompt()
+                    .user(originalQuery)
+                    .call()
+                    .content();
             log.debug("LLM Response: {}", response);
 
             List<Token> keywords = parseResponse(response);
@@ -79,25 +71,6 @@ public class OllamaService {
                     .filter(s -> !s.isEmpty())
                     .map(str -> new Token(str, Collections.emptyList()))
                     .collect(Collectors.toList());
-        }
-    }
-
-    private <T> T executeWithTimeout(Supplier<T> supplier, long timeout) throws Exception {
-        CompletableFuture<T> future = CompletableFuture.supplyAsync(supplier);
-        try {
-            return future.get(timeout, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            future.cancel(true);
-            throw new IllegalStateException("Ollama request timed out after " + TIMEOUT_SECONDS + " seconds", e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
-            throw new IllegalStateException("Unexpected Ollama request failure", cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw e;
         }
     }
 

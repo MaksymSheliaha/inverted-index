@@ -12,6 +12,8 @@ spring:
 
 ollama:
   defaultPrompt: ollama/prompt.txt
+  connect-timeout: 5s
+  read-timeout: 15s
 
 source:
   input-path: index_files
