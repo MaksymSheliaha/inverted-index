@@ -37,20 +37,72 @@ public class SearchService {
         this.invertedIndex.set(invertedIndex);
     }
 
-    public String getStatus() {
-        return invertedIndex.get() == null ? "Index not loaded" : "Index loaded";
-    }
-
     public void searchStream(SearchRequest searchRequest, Consumer<SearchStreamMessage> progressCallback) {
-        throw new UnsupportedOperationException("Streaming search is not supported yet");
+        if (invertedIndex.get() == null) {
+            progressCallback.accept(new SearchStreamMessage("error", Map.of("message", "Index not loaded")));
+            return;
+        }
+
+        // 1. Analyze / Query Expansion
+        progressCallback.accept(new SearchStreamMessage("analyze_start", Map.of("message", "Starting query analysis...")));
+        StopWatch stopWatch = new StopWatch();
+        stopWatch.start("analyze");
+        var searchTerms = getTokens(searchRequest);
+        stopWatch.stop();
+
+        long analyzeTimeMs = stopWatch.lastTaskInfo().getTimeMillis();
+
+        Map<String, Object> queryExpansionData = new HashMap<>();
+        queryExpansionData.put("message", "Finished query analysis");
+        queryExpansionData.put("original", searchRequest.getQuery());
+        queryExpansionData.put("expanded_terms", searchTerms.stream()
+                .flatMap(t -> Stream.concat(Stream.of(t.origToken()), t.synonyms() != null ? t.synonyms().stream() : Stream.empty()))
+                .toList());
+        queryExpansionData.put("time_ms", analyzeTimeMs);
+        progressCallback.accept(new SearchStreamMessage("analyze_finish", queryExpansionData));
+
+        // 2. Search
+        progressCallback.accept(new SearchStreamMessage("search_start", Map.of("message", "Starting search...")));
+        stopWatch.start("search stage");
+        var docs = findForTerms(searchTerms);
+        stopWatch.stop();
+        long searchTimeMs = stopWatch.lastTaskInfo().getTimeMillis();
+
+        int numFound = docs.size();
+        progressCallback.accept(new SearchStreamMessage("search_finish", Map.of(
+                "message", "Search finished",
+                "time_ms", searchTimeMs,
+                "numFound", numFound
+        )));
+
+        // 3. Collect
+        progressCallback.accept(new SearchStreamMessage("collect_start", Map.of("message", "Starting collecting docs...")));
+        stopWatch.start("collect");
+        var matches = sortAndPaginate(docs, numFound, searchRequest);
+        var resultMap = readDocs(matches);
+
+        var result = matches.stream()
+                .map(match -> new ResponseDoc(resultMap.get(match.document()), match.score(), searchRequest.getMode().shouldExpand()))
+                .toList();
+        stopWatch.stop();
+        long collectTimeMs = stopWatch.lastTaskInfo().getTimeMillis();
+
+        Map<String, Object> collectData = new HashMap<>();
+        collectData.put("message", "Docs collected");
+        collectData.put("results", result);
+        collectData.put("numFound", numFound);
+        collectData.put("page", searchRequest.getPage());
+        collectData.put("size", searchRequest.getSize());
+        collectData.put("time_ms", collectTimeMs);
+        progressCallback.accept(new SearchStreamMessage("collect_finish", collectData));
+
+        progressCallback.accept(new SearchStreamMessage("done", Map.of()));
     }
 
     public SearchResponse findDocs(SearchRequest searchRequest) {
         if (invertedIndex.get() == null) return SearchResponse.EMPTY;
 
         Map<String, Object> timingContext = new HashMap<>();
-        Map<String, Object> debugContext = new HashMap<>();
-        debugContext.put("timingContext", timingContext);
 
         StopWatch stopWatch = new StopWatch();
 
