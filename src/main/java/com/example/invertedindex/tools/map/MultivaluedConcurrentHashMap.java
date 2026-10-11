@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BiConsumer;
 
 public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> {
@@ -14,7 +14,7 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
     public static final double DEFAULT_LOAD_FACTOR = 0.75;
 
     private volatile Node<K, List<V>>[] table;
-    private final Lock[] locks;
+    private final ReadWriteLock[] locks;
     private final AtomicInteger size;
     private final double loadFactor;
 
@@ -27,9 +27,9 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
         this.size = new AtomicInteger(0);
         this.loadFactor = loadFactor;
         int segmentCount = calculateSegmentCount(capacity);
-        this.locks = new ReentrantLock[segmentCount];
+        this.locks = new ReentrantReadWriteLock[segmentCount];
         for (int i = 0; i < segmentCount; i++) {
-            this.locks[i] = new ReentrantLock();
+            this.locks[i] = new ReentrantReadWriteLock();
         }
     }
 
@@ -53,7 +53,7 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
         int hash = hash(key);
         int lockIndex = lockIndex(hash);
 
-        locks[lockIndex].lock();
+        locks[lockIndex].readLock().lock();
         try {
             int index = tableIndex(hash);
             var node = table[index];
@@ -65,7 +65,7 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
             }
 
         } finally {
-            locks[lockIndex].unlock();
+            locks[lockIndex].readLock().unlock();
         }
         return null;
     }
@@ -75,7 +75,8 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
         int hash = hash(key);
         int lockIndex = lockIndex(hash);
 
-        locks[lockIndex].lock();
+        int currentSize;
+        locks[lockIndex].writeLock().lock();
         try {
             int index = tableIndex(hash);
             Node<K, List<V>> node = table[index];
@@ -90,14 +91,19 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
             List<V> list = new ArrayList<>();
             list.add(value);
             table[index] = new Node<>(key, list, table[index]);
+            currentSize = size.incrementAndGet();
         } finally {
-            locks[lockIndex].unlock();
+            locks[lockIndex].writeLock().unlock();
         }
 
-        int currentSize = size.incrementAndGet();
         if ((double) currentSize / table.length > loadFactor) {
             resize();
         }
+    }
+
+    @Override
+    public long size() {
+        return size.get();
     }
 
     private void put(K key, List<V> value, Node<K, List<V>>[] table) {
@@ -111,7 +117,7 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
         int hash = hash(key);
         int lockIndex = lockIndex(hash);
 
-        locks[lockIndex].lock();
+        locks[lockIndex].writeLock().lock();
         try {
             int index = tableIndex(hash);
             var node = table[index];
@@ -131,13 +137,13 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
             }
             return false;
         } finally {
-            locks[lockIndex].unlock();
+            locks[lockIndex].writeLock().unlock();
         }
     }
 
     private void resize() {
         for(var lock: locks) {
-            lock.lock();
+            lock.writeLock().lock();
         }
         try {
             if ((double) size.get() / table.length > loadFactor) {
@@ -147,7 +153,7 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
                 table = newTable;            }
         } finally {
             for(var lock: locks) {
-                lock.unlock();
+                lock.writeLock().unlock();
             }
         }
     }
@@ -176,13 +182,13 @@ public class MultivaluedConcurrentHashMap<K, V> implements MultivaluedMap<K, V> 
     @Override
     public UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap(){
         for(var lock: locks) {
-            lock.lock();
+            lock.readLock().lock();
         }
         try{
             return new UnmodifiableMultivaluedMap<>(table);
         } finally {
             for(var lock: locks) {
-                lock.unlock();
+                lock.readLock().unlock();
             }
         }
     }

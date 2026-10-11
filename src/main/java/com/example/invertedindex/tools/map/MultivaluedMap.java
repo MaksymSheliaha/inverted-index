@@ -7,4 +7,5 @@ public interface MultivaluedMap<K, V> {
     void add(K key, V value);
     boolean remove(K key);
     UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap();
+    long size();
 }

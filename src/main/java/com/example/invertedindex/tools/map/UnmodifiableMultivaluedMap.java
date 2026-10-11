@@ -5,9 +5,11 @@ import java.util.Objects;
 
 public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
     private final Node<K,List<V>>[] table;
+    private final long size;
 
     protected UnmodifiableMultivaluedMap(Node<K, List<V>>[] table) {
         this.table = new Node[table.length];
+        long size = 0;
 
         for (int i = 0; i < table.length; i++) {
             Node<K, List<V>> node = table[i];
@@ -27,8 +29,11 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
 
                 previous = copy;
                 node = node.next;
+                size++;
             }
         }
+
+        this.size = size;
     }
 
     @Override
@@ -59,5 +64,10 @@ public class UnmodifiableMultivaluedMap<K, V> implements MultivaluedMap<K, V> {
     @Override
     public UnmodifiableMultivaluedMap<K, V> getUnmodifiableMap() {
         throw new UnsupportedOperationException("UnmodifiableMultivaluedMap doesn't support getUnmodifiableMap method");
+    }
+
+    @Override
+    public long size() {
+        return size;
     }
 }
