@@ -12,11 +12,11 @@ public class Server {
     private static boolean active = true;
 
     public static void main(String[] args) {
-        String backendHost = Constants.DEFAULT_BACKEND_HOST;
+
         if (args != null && args.length > 0 && args[0] != null && !args[0].isBlank()) {
-            backendHost = args[0].trim();
+            Constants.BACKEND_HOST = args[0].trim();
         }
-        Constants.BACKEND_HOST = backendHost;
+
         System.out.println("Starting web-client server on port " + SERVER_PORT);
         System.out.println("Configured backend server-host: " + Constants.BACKEND_HOST);
 
@@ -26,7 +26,7 @@ public class Server {
             while(active){
                 Socket socket = serverSocket.accept();
                 try{
-                    executor.submit(new ConnectionProcessor(socket, backendHost));
+                    executor.submit(new ConnectionProcessor(socket));
                 } catch (Exception e) {
                     try{
                         System.err.println("Task rejected "+socket);

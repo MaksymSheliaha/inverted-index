@@ -20,12 +20,8 @@ public class ConnectionProcessor implements Runnable{
     private BufferedWriter output;
 
     public ConnectionProcessor(Socket socket){
-        this(socket, BACKEND_HOST);
-    }
-
-    public ConnectionProcessor(Socket socket, String backendHost){
         this.socket = socket;
-        this.backendHost = (backendHost != null && !backendHost.isBlank()) ? backendHost : DEFAULT_BACKEND_HOST;
+        this.backendHost = BACKEND_HOST;
     }
 
     @Override

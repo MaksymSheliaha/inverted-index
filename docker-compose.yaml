@@ -10,11 +10,26 @@ services:
     environment:
       - SOURCE_INPUT_PATH=/app/index_files
       - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
-      - JAVA_TOOL_OPTIONS=-Xms1g -Xmx6g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1
+#      - JAVA_TOOL_OPTIONS=-Xms1g -Xmx6g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1
+      - JAVA_TOOL_OPTIONS=-Xms1g -Xmx6g
     volumes:
       - ./index_files:/app/index_files
     depends_on:
       - ollama
+    restart: unless-stopped
+
+  web-client:
+    build:
+      context: ./clients/web-client
+      dockerfile: Dockerfile
+    container_name: web-client
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - BACKEND_HOST=localhost:8080
+    depends_on:
+      - app
     restart: unless-stopped
 
   ollama:
