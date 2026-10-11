@@ -33,9 +33,10 @@ public class Executor implements Closeable {
         for (int i = 0; i < threadNum; i++) {
             threads[i] = new Worker();
         }
+        start();
     }
 
-    public synchronized void start(){
+    private synchronized void start(){
         if(started || closed) throw new IllegalStateException();
         started = true;
         Arrays.stream(threads).forEach(Thread::start);
