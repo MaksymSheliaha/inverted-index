@@ -34,3 +34,4 @@ build/
 /out/
 /.agents/skills/Agent.md
 /Agent.md
+/clients/web-client/bin/
