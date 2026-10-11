@@ -69,6 +69,7 @@ public class IndexService {
         try {
             documentCount.set(0);
             var index = Index.initWriteIndex(getFields());
+            searchService.setInvertedIndex(index);
             try (Executor executor = new Executor(threadNum)) {
                 dataProvider.getInputFiles().forEach(file ->
                     executor.submit(() -> processFile(file, index)));
