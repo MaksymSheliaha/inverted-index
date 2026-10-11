@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inverted Index Search</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f4f6f9; }
+        .log-box { height: 250px; overflow-y: scroll; background: #212529; color: #f8f9fa; padding: 15px; font-family: monospace; border-radius: 5px; }
+        .list-group-item pre { margin-bottom: 0; background: #f8f9fa; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="mb-4 text-center">Inverted Index Search Engine</h1>
+
+    <!-- Stats & Health -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">System Status</div>
+                <div class="card-body">
+                    <p>Backend: <strong id="backend-host-display">Checking...</strong></p>
+                    <p>Health: <span id="health-status" class="badge bg-secondary">Checking...</span></p>
+                    <p>Ollama Available: <span id="ollama-status" class="badge bg-secondary">Checking...</span></p>
+                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="checkHealth()">Refresh Health</button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-success text-white">Index Statistics</div>
+                <div class="card-body">
+                    <p>Indexed: <span id="stats-indexed" class="badge bg-secondary">Checking...</span></p>
+                    <p>Documents: <strong id="stats-docs">0</strong></p>
+                    <p>Build Time: <strong id="stats-time">0</strong> ms (Threads: <span id="stats-threads">0</span>)</p>
+                    <button class="btn btn-sm btn-outline-success mt-2" onclick="checkStats()">Refresh Stats</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indexing Control -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-dark text-white">Build Index</div>
+        <div class="card-body">
+            <div class="input-group">
+                <span class="input-group-text">Threads</span>
+                <input type="number" id="thread-num" class="form-control" value="4" min="1" max="32">
+                <button class="btn btn-primary" onclick="buildIndex()" id="build-btn">Start Indexing</button>
+            </div>
+            <div id="build-message" class="mt-2 text-success fw-bold"></div>
+        </div>
+    </div>
+
+    <!-- Search Control -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-info text-dark fw-bold">Search</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <input type="text" id="search-query" class="form-control" placeholder="Enter search query...">
+                </div>
+                <div class="col-md-2">
+                    <select id="search-mode" class="form-select">
+                        <option value="KEYWORD">Keyword Only</option>
+                        <option value="EXPANDED">Expanded (LLM)</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <input type="number" id="search-page" class="form-control" value="0" min="0" placeholder="Page">
+                </div>
+                <div class="col-md-2">
+                    <input type="number" id="search-size" class="form-control" value="10" min="1" placeholder="Size">
+                </div>
+                <div class="col-md-2 d-grid gap-2">
+                    <button class="btn btn-success" onclick="performSearchREST()">REST</button>
+                    <button class="btn btn-warning" onclick="performSearchWS()">WebSocket</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebSocket Logs -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-secondary text-white">WebSocket Pipeline Logs</div>
+        <div class="card-body p-0">
+            <div id="ws-logs" class="log-box m-0">Waiting for connection...</div>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white">
+            Results 
+            <span id="results-count" class="badge bg-light text-dark rounded-pill float-end">0 found</span>
+            <span id="results-page-info" class="badge bg-secondary rounded-pill float-end me-2">Page: 0, Size: 10</span>
+        </div>
+        <div class="card-body" id="search-results">
+            <p class="text-muted">No results to display.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const BACKEND_HOST = "{{BACKEND_HOST}}";
+
+    function getBackendUrls() {
+        let host = BACKEND_HOST;
+        if (!host || host.startsWith("{{")) {
+            host = "localhost:8080";
+        }
+        host = host.trim();
+
+        let isSecure = false;
+        if (host.startsWith("https://")) {
+            isSecure = true;
+            host = host.slice(8);
+        } else if (host.startsWith("http://")) {
+            host = host.slice(7);
+        } else if (host.startsWith("wss://")) {
+            isSecure = true;
+            host = host.slice(6);
+        } else if (host.startsWith("ws://")) {
+            host = host.slice(5);
+        }
+
+        host = host.replace(/\/+$/, '');
+
+        const httpProto = isSecure ? "https:" : "http:";
+        const wsProto = isSecure ? "wss:" : "ws:";
+
+        return {
+            host: host,
+            http: `${httpProto}//${host}`,
+            ws: `${wsProto}//${host}`
+        };
+    }
+
+    async function checkHealth() {
+        const { http, host } = getBackendUrls();
+        const hostDisplay = document.getElementById('backend-host-display');
+        if (hostDisplay) {
+            hostDisplay.textContent = host;
+        }
+
+        try {
+            const res = await fetch(`${http}/api/health`);
+            const data = await res.json();
+            document.getElementById('health-status').textContent = data.status;
+            document.getElementById('health-status').className = data.status === 'ok' ? 'badge bg-success' : 'badge bg-danger';
+            document.getElementById('ollama-status').textContent = data.ollama ? 'Yes' : 'No';
+            document.getElementById('ollama-status').className = data.ollama ? 'badge bg-success' : 'badge bg-warning';
+        } catch (e) {
+            document.getElementById('health-status').textContent = 'Error';
+            document.getElementById('health-status').className = 'badge bg-danger';
+        }
+    }
+
+    async function checkStats() {
+        try {
+            const { http } = getBackendUrls();
+            const res = await fetch(`${http}/api/stats`);
+            const data = await res.json();
+            document.getElementById('stats-indexed').textContent = data.indexed ? 'Yes' : 'No';
+            document.getElementById('stats-indexed').className = data.indexed ? 'badge bg-success' : 'badge bg-warning';
+            document.getElementById('stats-docs').textContent = data.documents || 0;
+            document.getElementById('stats-time').textContent = data.indexBuildTimeMs || 0;
+            document.getElementById('stats-threads').textContent = data.threadsUsed || 0;
+        } catch (e) {
+            console.error('Failed to load stats', e);
+        }
+    }
+
+    async function buildIndex() {
+        const btn = document.getElementById('build-btn');
+        const msg = document.getElementById('build-message');
+        btn.disabled = true;
+        msg.className = "mt-2 text-primary fw-bold";
+        msg.textContent = "Indexing started... Please wait.";
+        
+        try {
+            const { http } = getBackendUrls();
+            const threads = document.getElementById('thread-num').value;
+            const res = await fetch(`${http}/api/index`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threadNum: parseInt(threads) })
+            });
+            const data = await res.json();
+            msg.className = data.success ? "mt-2 text-success fw-bold" : "mt-2 text-danger fw-bold";
+            msg.textContent = `Indexing finished in ${data.indexBuildTimeMs} ms. Documents: ${data.documents}`;
+            checkStats();
+        } catch (e) {
+            msg.textContent = "Error building index.";
+            msg.className = "mt-2 text-danger fw-bold";
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function displayResults(results, numFound, page, size) {
+        const container = document.getElementById('search-results');
+        const countBadge = document.getElementById('results-count');
+        const pageBadge = document.getElementById('results-page-info');
+        
+        countBadge.textContent = (numFound !== undefined ? numFound : (results ? results.length : 0)) + ' found';
+        if (page !== undefined && size !== undefined) {
+            pageBadge.textContent = `Page: ${page}, Size: ${size}`;
+        }
+        
+        if (!results || results.length === 0) {
+            container.innerHTML = '<p class="text-muted">No results to display.</p>';
+            return;
+        }
+        
+        let html = '<div class="list-group">';
+        results.forEach(doc => {
+            html += `
+                <div class="list-group-item">
+                    <h5 class="mb-2">Score: <span class="badge bg-primary">${doc.score.toFixed(4)}</span></h5>
+                    <pre><code>${JSON.stringify(doc.source, null, 2)}</code></pre>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    async function performSearchREST() {
+        const query = document.getElementById('search-query').value;
+        const mode = document.getElementById('search-mode').value;
+        const page = parseInt(document.getElementById('search-page').value) || 0;
+        const size = parseInt(document.getElementById('search-size').value) || 10;
+        
+        try {
+            const { http } = getBackendUrls();
+            const res = await fetch(`${http}/api/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, mode, page, size, debug: false })
+            });
+            const data = await res.json();
+            displayResults(data.docs, data.numFound, data.page, data.size);
+        } catch (e) {
+            console.error('Search failed', e);
+            alert('Search failed. See console for details.');
+        }
+    }
+
+    function performSearchWS() {
+        const query = document.getElementById('search-query').value;
+        const mode = document.getElementById('search-mode').value;
+        const page = parseInt(document.getElementById('search-page').value) || 0;
+        const size = parseInt(document.getElementById('search-size').value) || 10;
+        const logBox = document.getElementById('ws-logs');
+        logBox.innerHTML = '';
+        
+        const { ws } = getBackendUrls();
+        const wsUrl = `${ws}/ws/search`;
+        const socket = new WebSocket(wsUrl);
+        
+        const appendLog = (html) => {
+            logBox.innerHTML += html;
+            logBox.scrollTop = logBox.scrollHeight;
+        };
+        
+        socket.onopen = () => {
+            appendLog(`<div class="text-info">[WS] Connected. Sending request...</div>`);
+            socket.send(JSON.stringify({ query, mode, page, size }));
+        };
+        
+        socket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.stage === 'analyze_start') {
+                appendLog(`<div class="text-info">[WS] ${msg.data.message}</div>`);
+            } else if (msg.stage === 'analyze_finish') {
+                appendLog(`<div class="text-warning">[WS] ${msg.data.message} (${msg.data.time_ms} ms)</div>`);
+                appendLog(`<div class="text-secondary ms-4">[WS] Expanded terms: ${msg.data.expanded_terms.join(', ')}</div>`);
+            } else if (msg.stage === 'search_start') {
+                appendLog(`<div class="text-info">[WS] ${msg.data.message}</div>`);
+            } else if (msg.stage === 'search_finish') {
+                appendLog(`<div class="text-warning">[WS] ${msg.data.message} (${msg.data.time_ms} ms)</div>`);
+                appendLog(`<div class="text-secondary ms-4">[WS] Found ${msg.data.numFound} matching docs</div>`);
+            } else if (msg.stage === 'collect_start') {
+                appendLog(`<div class="text-info">[WS] ${msg.data.message}</div>`);
+            } else if (msg.stage === 'collect_finish') {
+                appendLog(`<div class="text-success">[WS] ${msg.data.message} (${msg.data.time_ms} ms)</div>`);
+                displayResults(msg.data.results, msg.data.numFound, msg.data.page, msg.data.size);
+            } else if (msg.stage === 'done') {
+                appendLog(`<div class="text-info fw-bold mt-2">[WS] Pipeline finished. Closing connection.</div>`);
+                socket.close();
+            } else if (msg.stage === 'error') {
+                appendLog(`<div class="text-danger fw-bold">[WS] Error: ${msg.data.message}</div>`);
+            }
+        };
+        
+        socket.onerror = (error) => {
+            appendLog(`<div class="text-danger">[WS] Connection error.</div>`);
+            console.error('WebSocket Error', error);
+        };
+        
+        socket.onclose = () => {
+            appendLog(`<div class="text-secondary">[WS] Disconnected.</div>`);
+        };
+    }
+
+    // Initial load
+    checkHealth();
+    checkStats();
+</script>
+
+</body>
+</html>
