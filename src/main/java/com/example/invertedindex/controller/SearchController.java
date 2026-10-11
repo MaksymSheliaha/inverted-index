@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -26,5 +28,10 @@ public class SearchController {
     @PostMapping("/search")
     public ResponseEntity search(@RequestBody SearchRequest searchRequest){
         return ResponseEntity.ok(searchService.findDocs(searchRequest));
+    }
+
+    @GetMapping("/documents")
+    public ResponseEntity getByIds(@RequestParam(name = "ids") List<Long> ids){
+        return ResponseEntity.ok(searchService.getById(ids));
     }
 }

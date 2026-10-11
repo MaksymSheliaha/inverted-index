@@ -70,7 +70,6 @@ public class IndexService {
             documentCount.set(0);
             var index = Index.initWriteIndex(getFields());
             try (Executor executor = new Executor(threadNum)) {
-                executor.start();
                 dataProvider.getInputFiles().forEach(file ->
                     executor.submit(() -> processFile(file, index)));
             }
@@ -96,9 +95,9 @@ public class IndexService {
             while (iterator.hasNextValue()) {
                 var location = iterator.getCurrentLocation().getByteOffset() - 1;
                 var content = (Map<String, Object>) iterator.nextValue();
-                Document doc = new Document(location, file);
+                var id = documentCount.incrementAndGet();
+                Document doc = new Document(id, location, file);
                 indexDoc(index, doc, content);
-                documentCount.incrementAndGet();
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to index file: " + file, e);
@@ -122,6 +121,7 @@ public class IndexService {
                 }
             }
         }
+        index.documents().put(doc.getId(), doc);
     }
 
     private List<Field> getFields() {

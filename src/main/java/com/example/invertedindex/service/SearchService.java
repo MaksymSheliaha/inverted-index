@@ -37,6 +37,15 @@ public class SearchService {
         this.invertedIndex.set(invertedIndex);
     }
 
+    public List<ResponseDoc> getById(List<Long> ids) {
+        if (invertedIndex.get() == null) return List.of();
+        List<Document> docs = ids.stream().map(invertedIndex.get().documents()::get).filter(Objects::nonNull).toList();
+        var fetchedDocs = readDocs(docs.stream());
+        return docs.stream()
+                .map(doc -> new ResponseDoc(doc.getId(), fetchedDocs.get(doc), 0.f, false))
+                .toList();
+    }
+
     public void searchStream(SearchRequest searchRequest, Consumer<SearchStreamMessage> progressCallback) {
         if (invertedIndex.get() == null) {
             progressCallback.accept(new SearchStreamMessage("error", Map.of("message", "Index not loaded")));
@@ -79,10 +88,10 @@ public class SearchService {
         progressCallback.accept(new SearchStreamMessage("collect_start", Map.of("message", "Starting collecting docs...")));
         stopWatch.start("collect");
         var matches = sortAndPaginate(docs, numFound, searchRequest);
-        var resultMap = readDocs(matches);
+        var resultMap = readDocs(matches.stream().map(Match::document));
 
         var result = matches.stream()
-                .map(match -> new ResponseDoc(resultMap.get(match.document()), match.score(), searchRequest.getMode().shouldExpand()))
+                .map(match -> new ResponseDoc(match.document().getId(), resultMap.get(match.document()), match.score(), searchRequest.getMode().shouldExpand()))
                 .toList();
         stopWatch.stop();
         long collectTimeMs = stopWatch.lastTaskInfo().getTimeMillis();
@@ -118,10 +127,10 @@ public class SearchService {
 
         stopWatch.start("collect");
         var matches = sortAndPaginate(docs, numFound, searchRequest);
-        var resultMap = readDocs(matches);
+        var resultMap = readDocs(matches.stream().map(Match::document));
 
         var result = matches.stream()
-                .map(match -> new ResponseDoc(resultMap.get(match.document()), match.score(), searchRequest.getMode().shouldExpand()))
+                .map(match -> new ResponseDoc(match.document().getId(), resultMap.get(match.document()), match.score(), searchRequest.getMode().shouldExpand()))
                 .toList();
         stopWatch.stop();
 
@@ -184,11 +193,9 @@ public class SearchService {
                 .map(entry -> new Match(entry.getKey(), entry.getValue()));
     }
 
-    private Map<Document, Map<String, Object>> readDocs(List<Match> matches) {
+    private Map<Document, Map<String, Object>> readDocs(Stream<Document> matches) {
         Map<Document, Map<String, Object>> result = new HashMap<>();
-        Map<Path, List<Document>> grouped = matches.stream()
-                .map(Match::document)
-                .collect(Collectors.groupingBy(Document::getPath));
+        Map<Path, List<Document>> grouped = matches.collect(Collectors.groupingBy(Document::getPath));
 
         for (Map.Entry<Path, List<Document>> entry : grouped.entrySet()) {
             try (RandomAccessFile raf = new RandomAccessFile(entry.getKey().toFile(), "r")) {

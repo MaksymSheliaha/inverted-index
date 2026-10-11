@@ -220,8 +220,8 @@
         let html = '<div class="list-group">';
         results.forEach(doc => {
             html += `
-                <div class="list-group-item">
-                    <h5 class="mb-2">Score: <span class="badge bg-primary">${doc.score.toFixed(4)}</span></h5>
+                <div class="list-group-item" id="doc-${doc.id}">
+                    <h5 class="mb-2">ID: <span class="badge bg-secondary">${doc.id}</span> | Score: <span class="badge bg-primary">${doc.score.toFixed(4)}</span></h5>
                     <pre><code>${JSON.stringify(doc.source, null, 2)}</code></pre>
                 </div>
             `;
