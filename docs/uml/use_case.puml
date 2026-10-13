@@ -1,0 +1,63 @@
+@startuml
+title Діаграма прецедентів (Use Case Diagram)
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam actorStyle awesome
+
+skinparam actor {
+    BackgroundColor #E8F4F8
+    BorderColor #2B7A78
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #17252A
+    ArrowColor #2B7A78
+}
+
+actor "Користувач" as User
+actor "Ollama LLM Service" as Ollama <<External System>>
+
+rectangle "Inverted Index Search System" {
+    package "Сценарії роботи з системою" {
+        usecase "UC1: Побудувати індекс датасету" as UC1
+        usecase "UC2: Пошук документів (REST)" as UC2
+        usecase "UC3: Стрімінговий пошук (WebSocket)" as UC3
+        usecase "UC4: Отримати документи за ID" as UC4
+        usecase "UC5: Переглянути стан Health та статистику Stats" as UC5
+    }
+
+    package "Підпорядковані операції" {
+        usecase "Паралельне зчитування файлів" as UC1_1
+        usecase "Токенізація та нормалізація" as UC1_2
+        usecase "Розширення запиту синонімами" as UC_Expand
+        usecase "Ранжування результатів" as UC_Rank
+        usecase "Зчитування документа за офсетом з файлу" as UC_ReadDoc
+    }
+}
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+
+UC1 ..> UC1_1 : <<include>>
+UC1 ..> UC1_2 : <<include>>
+
+UC2 ..> UC_Rank : <<include>>
+UC2 ..> UC_ReadDoc : <<include>>
+UC2 ..> UC_Expand : <<extend>>\n(якщо mode=EXPANDED)
+
+UC3 ..> UC_Rank : <<include>>
+UC3 ..> UC_ReadDoc : <<include>>
+UC3 ..> UC_Expand : <<extend>>\n(якщо mode=EXPANDED)
+
+UC4 ..> UC_ReadDoc : <<include>>
+
+UC_Expand --> Ollama : генерація синонімів\nчерез REST API
+
+@enduml

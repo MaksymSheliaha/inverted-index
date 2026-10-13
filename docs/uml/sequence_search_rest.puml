@@ -1,0 +1,44 @@
+@startuml
+title Діаграма послідовності: UC2 - Пошук документів (REST)
+
+autonumber
+skinparam shadowing false
+skinparam roundcorner 8
+
+actor "Користувач" as User
+boundary "Controller" as API
+control "SearchService" as SearchSvc
+participant "Ollama LLM" as LLM <<Зовнішній сервіс>>
+entity "Index" as Index
+database "FyleSystem" as Storage
+
+User -> API : Пошуковий запит\nPOST /api/search (query, mode, page, size)
+activate API
+
+API -> SearchSvc : Пошук документів
+activate SearchSvc
+
+opt Режим EXPANDED (семантичне розширення)
+    SearchSvc -> LLM : Запит на розширення синонімами
+    activate LLM
+    LLM --> SearchSvc : Список синонімів та розширених термінів
+    deactivate LLM
+end
+
+SearchSvc -> Index : Пошук та ранжування документів
+activate Index
+Index --> SearchSvc : Список релевантних ID документів
+deactivate Index
+
+SearchSvc -> Storage : Зчитування вмісту знайдених документів
+activate Storage
+Storage --> SearchSvc : Дані документів
+deactivate Storage
+
+SearchSvc --> API : Результати пошуку (документи, пагінація)
+deactivate SearchSvc
+
+API --> User : Відповідь з результатами пошуку (200 OK)
+deactivate API
+
+@enduml

@@ -1,0 +1,35 @@
+@startuml
+title Діаграма розгортання (Deployment Diagram) - Docker Compose
+
+skinparam shadowing false
+skinparam roundcorner 8
+
+skinparam node {
+    BackgroundColor #F7F9FA
+    BorderColor #2C3E50
+}
+skinparam component {
+    BackgroundColor #FFFFFF
+    BorderColor #2980B9
+}
+
+node "Docker Environment (Docker Compose Network)" {
+
+    node "Контейнер: web-client" as WebNode {
+        component [Web Client Service\n(Port: 3000)] as WebClient
+    }
+
+    node "Контейнер: inverted-index-app" as AppNode {
+        component [Inverted Index Service\n(Port: 8080)] as InvertedIndex
+    }
+
+    node "Контейнер: ollama" as OllamaNode {
+        component [Ollama LLM Service\n(Port: 11434)] as Ollama
+    }
+}
+
+' Взаємодія між контейнерами
+WebClient --> InvertedIndex : HTTP / WebSocket (:8080)\n[depends_on: inverted-index-app]
+InvertedIndex --> Ollama : HTTP REST (:11434)\n[depends_on: ollama]
+
+@enduml

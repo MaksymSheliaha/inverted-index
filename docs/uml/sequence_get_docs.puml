@@ -1,0 +1,36 @@
+@startuml
+title Діаграма послідовності: UC4 - Отримання документів за ID
+
+autonumber
+skinparam shadowing false
+skinparam roundcorner 8
+
+actor "Користувач" as User
+boundary "Controller" as API
+control "SearchService" as SearchSvc
+entity "Index" as Index
+database "File Storage" as Storage
+
+User -> API : Запит документів за ID\nGET /api/documents?ids=1042,2055,...
+activate API
+
+API -> SearchSvc : Отримання документів за списком ID
+activate SearchSvc
+
+SearchSvc -> Index : Пошук метаданих документів за ID
+activate Index
+Index --> SearchSvc : Розташування та зміщення файлів
+deactivate Index
+
+SearchSvc -> Storage : Зчитування вмісту документів
+activate Storage
+Storage --> SearchSvc : Повні дані документів
+deactivate Storage
+
+SearchSvc --> API : Список знайдених документів
+deactivate SearchSvc
+
+API --> User : Відповідь з документами (200 OK)
+deactivate API
+
+@enduml

@@ -1,0 +1,36 @@
+@startuml
+title Діаграма послідовності: UC1 - Побудова індексу датасету
+
+autonumber
+skinparam shadowing false
+skinparam roundcorner 8
+
+actor "Користувач" as User
+boundary "Controller" as API
+control "IndexService" as IdxSvc
+database "File System" as Storage
+entity "Index" as Index
+
+User -> API : Запит на індексацію\nPOST /api/index (кількість потоків)
+activate API
+
+API -> IdxSvc : Ініціалізація індексації
+activate IdxSvc
+
+IdxSvc -> Storage : Зчитування файлів датасету
+activate Storage
+Storage --> IdxSvc : Дані файлів
+deactivate Storage
+
+IdxSvc -> Index : Паралельна побудова індексу\n(токенізація та додавання термінів)
+activate Index
+Index --> IdxSvc : Індекс побудовано
+deactivate Index
+
+IdxSvc --> API : Статистика (кількість документів, час побудови)
+deactivate IdxSvc
+
+API --> User : Підтвердження успішної індексації (200 OK)
+deactivate API
+
+@enduml

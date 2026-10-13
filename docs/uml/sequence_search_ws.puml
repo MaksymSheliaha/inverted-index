@@ -1,0 +1,56 @@
+@startuml
+title Діаграма послідовності: UC3 - Стрімінговий пошук (WebSocket)
+
+autonumber
+skinparam shadowing false
+skinparam roundcorner 8
+
+actor "Користувач" as User
+boundary "WebSocket Gateway" as WS
+control "SearchService" as SearchSvc
+participant "Ollama LLM" as LLM
+entity "Index" as Index
+database "File System" as Storage
+
+User -> WS : Встановлення WebSocket з'єднання (/search/stream)
+activate WS
+WS --> User : З'єднання встановлено
+
+User -> WS : Пошуковий запит (JSON)
+
+WS -> SearchSvc : Запуск стрімінгового пошуку
+activate SearchSvc
+
+== 1. Етап аналізу запиту ==
+opt Режим EXPANDED
+    SearchSvc -> LLM : Розширення синонімами
+    activate LLM
+    LLM --> SearchSvc : Розширені ключові слова
+    deactivate LLM
+end
+SearchSvc -> WS : Повідомлення: аналіз завершено
+WS -> User : WS Frame (аналіз завершено, список синонімів)
+
+== 2. Етап пошуку в індексі ==
+SearchSvc -> Index : Пошук релевантних документів
+activate Index
+Index --> SearchSvc : Список знайдених документів
+deactivate Index
+SearchSvc -> WS : Повідомлення: пошук завершено
+WS -> User : WS Frame (знайдено N документів)
+
+== 3. Етап отримання результатів ==
+SearchSvc -> Storage : Зчитування вмісту перших N документів
+activate Storage
+Storage --> SearchSvc : Дані документів
+deactivate Storage
+SearchSvc -> WS : Повідомлення: документи зібрано
+WS -> User : WS Frame (список документів з даними)
+
+SearchSvc -> WS : Повідомлення: пошук завершено повністю
+deactivate SearchSvc
+WS -> User : WS Frame (done)
+
+deactivate WS
+
+@enduml

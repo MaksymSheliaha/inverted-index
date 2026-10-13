@@ -1,0 +1,103 @@
+@startuml
+title Діаграма класів (Class Diagram) - Контролери, Сервіси та Індекс
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam linetype ortho
+
+package "Controllers and Handlers" {
+    class SearchController {
+        - indexService: IndexService
+        - searchService: SearchService
+        + indexData(request: IndexRequest): ResponseEntity<IndexResponse>
+        + search(request: SearchRequest): ResponseEntity<SearchResponse>
+        + getByIds(ids: List<Long>): ResponseEntity<List<ResponseDoc>>
+    }
+
+    class HealthController {
+        - healthService: HealthService
+        + health(): ResponseEntity<HealthResponse>
+        + getStats(): ResponseEntity<StatsResponse>
+    }
+
+    class SearchWebSocketHandler {
+        - searchService: SearchService
+        # handleTextMessage(session: WebSocketSession, message: TextMessage): void
+    }
+}
+
+package "Services" {
+    class SearchService {
+        - ollamaService: OllamaService
+        - invertedIndex: AtomicReference<Index>
+        + setInvertedIndex(index: Index): void
+        + findDocs(request: SearchRequest): SearchResponse
+        + searchStream(request: SearchRequest, callback: Consumer<SearchStreamMessage>): void
+        + getById(ids: List<Long>): List<ResponseDoc>
+    }
+
+    class IndexService {
+        - dataProvider: DataProvider
+        - searchService: SearchService
+        + indexDataset(threadNum: Integer): IndexResponse
+        + isIndexed(): boolean
+        + getDocumentCount(): int
+        + getIndexBuildTimeMs(): long
+        + getThreadsUsed(): int
+    }
+
+    class OllamaService {
+        - chatClient: ChatClient
+        + isAvailable(): boolean
+        + getTokens(originalQuery: String): List<Token>
+    }
+
+    class HealthService {
+        - ollamaService: OllamaService
+        - indexService: IndexService
+        + getHealth(): HealthResponse
+        + getStats(): StatsResponse
+    }
+
+    class DataProvider {
+        - inputPath: String
+        + getInputFiles(): List<Path>
+    }
+}
+
+package "Index Model" {
+    class Index <<record>> {
+        + fieldIndexes: FieldIndex[]
+        + documents: Map<Long, Document>
+        + {static} initWriteIndex(fields: List<Field>): Index
+        + toReadIndex(): Index
+    }
+
+    class "Index.FieldIndex" as FieldIndex <<record>> {
+        + field: Field
+        + postings: MultivaluedMap<String, Posting>
+    }
+}
+
+' Зв'язки контролерів із сервісами
+SearchController --> IndexService
+SearchController --> SearchService
+HealthController --> HealthService
+SearchWebSocketHandler --> SearchService
+
+' Зв'язки між сервісами
+HealthService --> OllamaService
+HealthService --> IndexService
+IndexService --> DataProvider
+IndexService --> SearchService
+SearchService --> OllamaService
+
+' Зв'язки сервісів із класом Index
+IndexService ..> Index : creates and init >
+SearchService o-- Index : contains and use for search >
+
+' Внутрішня структура Index
+Index *-- FieldIndex
+
+@enduml

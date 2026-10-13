@@ -1,0 +1,50 @@
+@startuml
+title Діаграма послідовності: UC5 - Перевірка стану (Health) та статистики (Stats)
+
+autonumber
+skinparam shadowing false
+skinparam roundcorner 8
+
+actor "Користувач" as User
+boundary "Controller" as API
+control "HealthService" as HealthSvc
+participant "Ollama LLM" as LLM
+control "IndexService" as IdxSvc
+
+== Сценарій 1: Перевірка працездатності (Health) ==
+User -> API : Запит стану здоров'я\nGET /api/health
+activate API
+
+API -> HealthSvc : Опитування компонентів
+activate HealthSvc
+
+HealthSvc -> LLM : Перевірка доступності LLM
+activate LLM
+LLM --> HealthSvc : Статус (доступний / недоступний)
+deactivate LLM
+
+HealthSvc --> API : Загальний статус системи
+deactivate HealthSvc
+
+API --> User : Відповідь про стан здоров'я (200 OK)
+deactivate API
+
+== Сценарій 2: Отримання метрик індексу (Stats) ==
+User -> API : Запит статистики\nGET /api/stats
+activate API
+
+API -> HealthSvc : Отримання метрик
+activate HealthSvc
+
+HealthSvc -> IdxSvc : Запит показників індексації
+activate IdxSvc
+IdxSvc --> HealthSvc : Метрики (статус індексу, к-сть документів, час, потоки)
+deactivate IdxSvc
+
+HealthSvc --> API : Зведена статистика
+deactivate HealthSvc
+
+API --> User : Відповідь з показниками метрик (200 OK)
+deactivate API
+
+@enduml
